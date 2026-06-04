@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} — управление</title>
+  <style>
+    :root { color-scheme: dark; --px: 0; --py: 0; }
+    * { box-sizing: border-box; }
+    html, body { overflow-x: hidden; }
+    body {
+      margin: 0; min-height: 100vh; padding: 28px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #05070f; color: #e2e8f0; position: relative;
+    }
+
+    /* ---------- космический фон ---------- */
+    .space {
+      position: fixed; inset: 0; z-index: -3; overflow: hidden;
+      background:
+        radial-gradient(1000px 700px at 50% 120%, #16307a55, transparent 60%),
+        radial-gradient(1200px 800px at 50% -20%, #1e293b, #05070f 70%);
+    }
+    .layer { position: fixed; inset: -10%; z-index: -2; will-change: transform; }
+    .l1 { transform: translate(calc(var(--px) * 8px),  calc(var(--py) * 8px)); }
+    .l2 { transform: translate(calc(var(--px) * 20px), calc(var(--py) * 20px)); }
+    .l3 { transform: translate(calc(var(--px) * 40px), calc(var(--py) * 40px)); }
+    .dots { position: absolute; top: 0; left: 0; width: 2px; height: 2px; border-radius: 50%;
+      background: transparent; animation: drift linear infinite; }
+    .l1 .dots { animation-duration: 220s; }
+    .l2 .dots { animation-duration: 150s; }
+    .l3 .dots { width: 3px; height: 3px; animation-duration: 90s; }
+    @keyframes drift { from { transform: translateY(0); } to { transform: translateY(-2000px); } }
+    .twinkle { position: fixed; inset: 0; z-index: -2; pointer-events: none; animation: tw 6s ease-in-out infinite; }
+    @keyframes tw { 0%,100% { opacity: .85; } 50% { opacity: 1; } }
+
+    /* планета снизу */
+    .planet-wrap { position: fixed; left: 50%; bottom: 0; z-index: -1; pointer-events: none;
+      transform: translate(calc(-50% + var(--px) * 14px), calc(var(--py) * 10px)); }
+    .planet-rise { transform: translateY(135%); opacity: 0;
+      transition: transform 1.6s cubic-bezier(.16,.84,.3,1), opacity 1.2s ease; }
+    .planet-rise.show { transform: translateY(62%); opacity: 1; }
+    .planet { width: min(820px, 120vw); height: min(820px, 120vw); border-radius: 50%;
+      position: relative; overflow: hidden;
+      box-shadow: 0 0 180px 40px rgba(59,130,246,.24), 0 0 70px 10px rgba(120,185,255,.2);
+      animation: bob 9s ease-in-out infinite; }
+    .planet img { width: 100%; height: 100%; border-radius: 50%; display: block; object-fit: cover; transform: scale(1.13); }
+    .planet::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+      box-shadow: inset -30px -22px 90px rgba(0,0,0,.35), inset 22px 16px 60px rgba(120,185,255,.12); }
+    @keyframes bob { 0%,100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+
+    /* ---------- панель ---------- */
+    .wrap {
+      position: relative; z-index: 1; max-width: 1040px; margin: 0 auto;
+      background: rgba(15, 23, 42, .72); backdrop-filter: blur(14px);
+      border: 1px solid rgba(148,163,184,.14); border-radius: 20px;
+      padding: 26px 24px; box-shadow: 0 24px 70px rgba(0,0,0,.55);
+      animation: cardIn .6s ease both;
+    }
+    @keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    h1 { font-size: 22px; margin: 0 0 16px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .tab { padding: 9px 16px; border-radius: 10px; border: 1px solid rgba(148,163,184,.16);
+      background: rgba(2,6,23,.5); color: #cbd5e1; cursor: pointer; font-weight: 600; font-size: 14px; transition: .15s; }
+    .tab:hover { border-color: #334155; }
+    .tab.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .add { display: grid; grid-template-columns: 1fr 200px auto auto; gap: 10px; margin-bottom: 22px; }
+    input, button, select {
+      font-size: 14px; border-radius: 10px; border: 1px solid rgba(148,163,184,.16);
+      background: rgba(11,17,32,.8); color: #e2e8f0; padding: 11px 12px;
+    }
+    input::placeholder { color: #64748b; }
+    button { cursor: pointer; font-weight: 600; }
+    .primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .primary:hover { background: #1d4ed8; }
+    .danger { background: transparent; border-color: #7f1d1d; color: #f87171; padding: 7px 11px; }
+    .danger:hover { background: #7f1d1d22; }
+    .ghost { background: rgba(30,41,59,.5); border-color: #334155; color: #cbd5e1; padding: 7px 11px; }
+    .ghost:hover { background: rgba(51,65,85,.7); }
+    .chk { display: flex; align-items: center; gap: 6px; padding: 0 8px; color: #cbd5e1; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid rgba(148,163,184,.1); font-size: 13px; }
+    th { color: #94a3b8; font-weight: 600; }
+    td.link { font-family: monospace; font-size: 12px; color: #cbd5e1; word-break: break-all; max-width: 420px; }
+    .pill { font-size: 12px; padding: 3px 9px; border-radius: 999px; }
+    .on { background: #064e3b; color: #6ee7b7; }
+    .off { background: #3f1d1d; color: #fca5a5; }
+    .glob { background: #1e3a8a; color: #bfdbfe; }
+    .pers { background: #422006; color: #fdba74; }
+    td.actions { white-space: nowrap; text-align: right; }
+    .empty { color: #64748b; padding: 24px; text-align: center; }
+    .copy { cursor: pointer; color: #60a5fa; }
+
+    /* modal */
+    .modal { position: fixed; inset: 0; background: #000a; backdrop-filter: blur(4px);
+      display: none; align-items: center; justify-content: center; padding: 24px; z-index: 20; }
+    .modal.show { display: flex; }
+    .box { width: 100%; max-width: 520px; max-height: 80vh; overflow: auto;
+      background: rgba(15,23,42,.92); backdrop-filter: blur(16px);
+      border: 1px solid rgba(148,163,184,.16); border-radius: 16px; padding: 22px; }
+    .box h3 { margin: 0 0 4px; }
+    .box .muted { color: #94a3b8; font-size: 13px; margin: 0 0 16px; word-break: break-all; }
+    .srvrow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(148,163,184,.1); }
+    .srvrow .nm { flex: 1; font-size: 13px; }
+    .modactions { display: flex; gap: 10px; margin-top: 16px; }
+    .hidden { display: none !important; }
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #16a34a; color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 14px;
+      opacity: 0; transition: .2s; pointer-events: none; z-index: 30; }
+    .toast.show { opacity: 1; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dots, .twinkle, .planet, .planet::after, .wrap { animation: none; }
+      .planet-rise { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- фон -->
+  <div class="space"></div>
+  <div class="twinkle">
+    <div class="layer l1"><div class="dots" id="d1"></div></div>
+    <div class="layer l2"><div class="dots" id="d2"></div></div>
+    <div class="layer l3"><div class="dots" id="d3"></div></div>
+  </div>
+  <div class="planet-wrap"><div class="planet-rise" id="planet"><div class="planet"><img src="/static/planet.png" alt=""></div></div></div>
+
+  <div class="wrap">
+    <h1>{{ brand }} — управление</h1>
+    <div class="tabs">
+      <button class="tab active" id="tab-servers" onclick="switchTab('servers')">Сервера</button>
+      <button class="tab" id="tab-users" onclick="switchTab('users')">Пользователи</button>
+    </div>
+
+    <!-- СЕРВЕРА -->
+    <div id="view-servers">
+      <div class="add">
+        <input id="link" placeholder="vless://... (одна ссылка)">
+        <input id="name" placeholder="название (необязательно)">
+        <label class="chk"><input type="checkbox" id="isGlobal" checked> глобальный</label>
+        <button class="primary" onclick="addServer()">Добавить</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Название</th><th>Ссылка</th><th>Тип</th><th>Статус</th><th></th></tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="empty" class="empty hidden">Серверов пока нет.</div>
+    </div>
+
+    <!-- ПОЛЬЗОВАТЕЛИ -->
+    <div id="view-users" class="hidden">
+      <table>
+        <thead>
+          <tr><th>Пользователь</th><th>Статус</th><th>Sub-manager ссылка</th><th>Персональных</th><th></th></tr>
+        </thead>
+        <tbody id="urows"></tbody>
+      </table>
+      <div id="uempty" class="empty hidden">Пусто.</div>
+    </div>
+  </div>
+
+  <!-- модалка назначения персональных серверов -->
+  <div class="modal" id="modal">
+    <div class="box">
+      <h3 id="mTitle">Персональные сервера</h3>
+      <p class="muted" id="mSub"></p>
+      <div id="mList"></div>
+      <div class="modactions">
+        <button class="primary" onclick="saveAssign()">Сохранить</button>
+        <button class="ghost" onclick="closeModal()">Отмена</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">Скопировано</div>
+
+  <script>
+    const KEY = {{ key | tojson }};
+    const H = { "Content-Type": "application/json", "X-Admin-Token": KEY };
+    let SERVERS = [];     // кэш серверов
+    let MODAL_TOKEN = null;
+
+    async function api(method, path, body) {
+      const r = await fetch(path, { method, headers: H, body: body ? JSON.stringify(body) : undefined });
+      if (!r.ok) { alert("Ошибка: " + r.status + " " + (await r.text())); throw new Error(r.status); }
+      return r.status === 204 ? null : r.json();
+    }
+    function esc(s) { return (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+    function toast(t) { const e = document.getElementById("toast"); e.textContent = t || "Скопировано"; e.classList.add("show"); setTimeout(() => e.classList.remove("show"), 1400); }
+    function copy(text) { navigator.clipboard.writeText(text).then(() => toast()); }
+
+    function switchTab(t) {
+      document.getElementById("tab-servers").classList.toggle("active", t === "servers");
+      document.getElementById("tab-users").classList.toggle("active", t === "users");
+      document.getElementById("view-servers").classList.toggle("hidden", t !== "servers");
+      document.getElementById("view-users").classList.toggle("hidden", t !== "users");
+      if (t === "users") loadUsers();
+    }
+
+    // ---- Сервера ----
+    async function loadServers() {
+      SERVERS = await api("GET", "/admin/servers");
+      const rows = document.getElementById("rows");
+      rows.innerHTML = "";
+      document.getElementById("empty").classList.toggle("hidden", SERVERS.length > 0);
+      for (const s of SERVERS) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${s.id}</td>
+          <td>${esc(s.name) || "—"}</td>
+          <td class="link">${esc(s.link)}</td>
+          <td><span class="pill ${s.is_global ? "glob" : "pers"}">${s.is_global ? "глобальный" : "персональный"}</span></td>
+          <td><span class="pill ${s.enabled ? "on" : "off"}">${s.enabled ? "вкл" : "выкл"}</span></td>
+          <td class="actions">
+            <button class="ghost" onclick="toggleGlobal(${s.id}, ${!s.is_global})">${s.is_global ? "→перс" : "→глоб"}</button>
+            <button class="ghost" onclick="toggle(${s.id}, ${!s.enabled})">${s.enabled ? "выкл" : "вкл"}</button>
+            <button class="ghost" onclick="rename(${s.id})">✎</button>
+            <button class="danger" onclick="del(${s.id})">✕</button>
+          </td>`;
+        rows.appendChild(tr);
+      }
+    }
+    async function addServer() {
+      const link = document.getElementById("link").value.trim();
+      if (!link) return;
+      const name = document.getElementById("name").value.trim() || null;
+      const is_global = document.getElementById("isGlobal").checked;
+      await api("POST", "/admin/servers", { link, name, enabled: true, is_global });
+      document.getElementById("link").value = "";
+      document.getElementById("name").value = "";
+      loadServers();
+    }
+    async function toggle(id, enabled) { await api("PATCH", `/admin/servers/${id}`, { enabled }); loadServers(); }
+    async function toggleGlobal(id, is_global) { await api("PATCH", `/admin/servers/${id}`, { is_global }); loadServers(); }
+    async function del(id) { if (confirm("Удалить сервер #" + id + "?")) { await api("DELETE", `/admin/servers/${id}`); loadServers(); } }
+    async function rename(id) {
+      const name = prompt("Новое название:");
+      if (name === null) return;
+      await api("PATCH", `/admin/servers/${id}`, { name });
+      loadServers();
+    }
+
+    // ---- Пользователи ----
+    async function loadUsers() {
+      const urows = document.getElementById("urows");
+      urows.innerHTML = `<tr><td colspan="5" class="empty">Загрузка из панели…</td></tr>`;
+      let users;
+      try { users = await api("GET", "/admin/users"); }
+      catch (e) { urows.innerHTML = `<tr><td colspan="5" class="empty">Не удалось получить юзеров (проверь PANEL/API key)</td></tr>`; return; }
+      urows.innerHTML = "";
+      document.getElementById("uempty").classList.toggle("hidden", users.length > 0);
+      for (const u of users) {
+        const title = u.username || u.short_uuid;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${esc(title)}</td>
+          <td>${esc(u.status) || "—"}</td>
+          <td class="link"><span class="copy">${u.sub_url}</span></td>
+          <td>${u.assigned.length}</td>
+          <td class="actions"><button class="ghost">Сервера</button></td>`;
+        tr.querySelector(".copy").addEventListener("click", () => copy(u.sub_url));
+        tr.querySelector("button").addEventListener("click", () => openModal(u.short_uuid, title));
+        urows.appendChild(tr);
+      }
+    }
+
+    // ---- Модалка назначения ----
+    async function openModal(token, title) {
+      MODAL_TOKEN = token;
+      if (!SERVERS.length) SERVERS = await api("GET", "/admin/servers");
+      const personal = SERVERS.filter(s => !s.is_global);
+      const data = await api("GET", `/admin/users/${token}/servers`);
+      const assigned = new Set(data.assigned);
+      document.getElementById("mTitle").textContent = "Персональные сервера";
+      document.getElementById("mSub").textContent = title + " · " + token;
+      const list = document.getElementById("mList");
+      if (!personal.length) { list.innerHTML = `<p class="muted">Нет персональных серверов. Создай сервер с выключенным «глобальный».</p>`; }
+      else {
+        list.innerHTML = "";
+        for (const s of personal) {
+          const row = document.createElement("label");
+          row.className = "srvrow";
+          const off = s.enabled ? "" : " <span class='pill off'>выкл</span>";
+          const label = esc(s.name) || esc(s.link).slice(0, 50);
+          row.innerHTML = `<input type="checkbox" value="${s.id}" ${assigned.has(s.id) ? "checked" : ""}>
+            <span class="nm">${label}${off}</span>`;
+          list.appendChild(row);
+        }
+      }
+      document.getElementById("modal").classList.add("show");
+    }
+    function closeModal() { document.getElementById("modal").classList.remove("show"); MODAL_TOKEN = null; }
+    async function saveAssign() {
+      const ids = [...document.querySelectorAll("#mList input:checked")].map(c => parseInt(c.value));
+      await api("PUT", `/admin/users/${MODAL_TOKEN}/servers`, { server_ids: ids });
+      closeModal();
+      toast("Сохранено");
+      loadUsers();
+    }
+
+    // ---- фон: звёзды + параллакс + планета ----
+    function starField(count, color) {
+      const parts = [];
+      for (let i = 0; i < count; i++) {
+        const x = Math.floor(Math.random() * 2000), y = Math.floor(Math.random() * 2000);
+        parts.push(`${x}px ${y}px ${color}`, `${x}px ${y + 2000}px ${color}`);
+      }
+      return parts.join(',');
+    }
+    document.getElementById('d1').style.boxShadow = starField(90, '#ffffff');
+    document.getElementById('d2').style.boxShadow = starField(55, '#dbeafe');
+    document.getElementById('d3').style.boxShadow = starField(28, '#bfdbfe');
+    setTimeout(() => document.getElementById('planet').classList.add('show'), 500);
+    const root = document.documentElement;
+    let tx = 0, ty = 0, cx = 0, cy = 0;
+    (function loop() {
+      cx += (tx - cx) * 0.08; cy += (ty - cy) * 0.08;
+      root.style.setProperty('--px', cx.toFixed(3));
+      root.style.setProperty('--py', cy.toFixed(3));
+      requestAnimationFrame(loop);
+    })();
+    window.addEventListener('mousemove', (e) => {
+      tx = (e.clientX / window.innerWidth - 0.5) * 2;
+      ty = (e.clientY / window.innerHeight - 0.5) * 2;
+    });
+    window.addEventListener('deviceorientation', (e) => {
+      if (e.gamma == null) return;
+      tx = Math.max(-1, Math.min(1, e.gamma / 35));
+      ty = Math.max(-1, Math.min(1, (e.beta - 45) / 35));
+    });
+
+    loadServers();
+  </script>
+</body>
+</html>

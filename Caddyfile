@@ -1,0 +1,21 @@
+# h3/QUIC выключен (Happ кэширует alt-svc и лезет в UDP -> "socket closed").
+# RSA-сертификат + preferred_chains ISRG Root X1: классическая цепочка R-серия
+# -> ISRG Root X1, которой доверяют старые Android/TLS-клиенты (Happ).
+# ECDSA-серт по новой ветке LE (Root X2/YE) у них падает с "socket closed".
+{
+    servers {
+        # ТОЛЬКО HTTP/1.1: при h2 Caddy + большой заголовок routing Happ рвёт
+        # соединение ("socket closed"). На h1 заголовок идёт одной строкой и
+        # Happ его принимает (как от nginx).
+        protocols h1
+    }
+    key_type rsa2048
+    preferred_chains {
+        root_common_name "ISRG Root X1"
+    }
+}
+
+sub-manager.atlas.gripe {
+    header -Via
+    reverse_proxy app:8080
+}

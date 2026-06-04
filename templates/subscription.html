@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand }} — подписка</title>
+  <style>
+    :root { color-scheme: dark; --px: 0; --py: 0; }
+    * { box-sizing: border-box; }
+    html, body { overflow-x: hidden; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #05070f;
+      color: #e2e8f0; padding: 24px; position: relative;
+    }
+
+    /* ---------- космический фон ---------- */
+    .space {
+      position: fixed; inset: 0; z-index: -3; overflow: hidden;
+      background:
+        radial-gradient(1000px 700px at 50% 120%, #16307a55, transparent 60%),
+        radial-gradient(1200px 800px at 50% -20%, #1e293b, #05070f 70%);
+    }
+    .layer { position: fixed; inset: -10%; z-index: -2; will-change: transform; }
+    .l1 { transform: translate(calc(var(--px) * 8px),  calc(var(--py) * 8px)); }
+    .l2 { transform: translate(calc(var(--px) * 20px), calc(var(--py) * 20px)); }
+    .l3 { transform: translate(calc(var(--px) * 40px), calc(var(--py) * 40px)); }
+    .dots {
+      position: absolute; top: 0; left: 0; width: 2px; height: 2px; border-radius: 50%;
+      background: transparent;
+      animation: drift linear infinite;
+    }
+    .l1 .dots { animation-duration: 220s; }
+    .l2 .dots { width: 2px; height: 2px; animation-duration: 150s; }
+    .l3 .dots { width: 3px; height: 3px; animation-duration: 90s; }
+    @keyframes drift { from { transform: translateY(0); } to { transform: translateY(-2000px); } }
+
+    /* мягкое мерцание всего поля звёзд */
+    .twinkle { position: fixed; inset: 0; z-index: -2; pointer-events: none;
+      animation: tw 6s ease-in-out infinite; }
+    @keyframes tw { 0%,100% { opacity: .85; } 50% { opacity: 1; } }
+
+    /* ---------- планета ---------- */
+    .planet-wrap {
+      position: fixed; left: 50%; bottom: 0; z-index: -1; pointer-events: none;
+      transform: translate(calc(-50% + var(--px) * 14px), calc(var(--py) * 10px));
+    }
+    .planet-rise {
+      transform: translateY(125%); opacity: 0;
+      transition: transform 1.6s cubic-bezier(.16,.84,.3,1), opacity 1.2s ease;
+    }
+    .planet-rise.show { transform: translateY(42%); opacity: 1; }
+    .planet {
+      width: min(900px, 130vw); height: min(900px, 130vw); border-radius: 50%;
+      position: relative; overflow: hidden;          /* обрезаем лишнее по кругу */
+      /* свечение атмосферы вокруг шара */
+      box-shadow: 0 0 180px 40px rgba(59,130,246,.28), 0 0 70px 10px rgba(120,185,255,.25);
+      animation: bob 9s ease-in-out infinite;
+    }
+    .planet img {
+      width: 100%; height: 100%; border-radius: 50%; display: block; object-fit: cover;
+      transform: scale(1.13);   /* зум: убираем чёрные поля картинки за круг */
+    }
+    /* мягкая тень-терминатор поверх картинки для объёма */
+    .planet::after {
+      content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+      box-shadow: inset -30px -22px 90px rgba(0,0,0,.35), inset 22px 16px 60px rgba(120,185,255,.12);
+    }
+    @keyframes bob { 0%,100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+
+    /* ---------- карточка ---------- */
+    .card {
+      position: relative; z-index: 1;
+      width: 100%; max-width: 420px;
+      background: rgba(15, 23, 42, .72); backdrop-filter: blur(14px);
+      border: 1px solid rgba(148,163,184,.14);
+      border-radius: 20px; padding: 28px 24px; box-shadow: 0 24px 70px rgba(0,0,0,.55);
+      animation: cardIn .7s ease both;
+    }
+    @keyframes cardIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+    h1 { margin: 0 0 4px; font-size: 22px; }
+    .sub { color: #94a3b8; font-size: 13px; margin-bottom: 18px; }
+
+    /* инфо о подписке */
+    .info { background: rgba(2,6,23,.5); border: 1px solid rgba(148,163,184,.12);
+      border-radius: 14px; padding: 14px 16px; margin-bottom: 18px; }
+    .info-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .info-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .badge { font-size: 12px; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+    .badge.ok { background: #064e3b; color: #6ee7b7; }
+    .badge.bad { background: #3f1d1d; color: #fca5a5; }
+    .info-row { display: flex; justify-content: space-between; font-size: 13px; color: #94a3b8; padding: 3px 0; }
+    .info-row span:last-child { color: #e2e8f0; }
+    .bar { height: 7px; background: rgba(148,163,184,.15); border-radius: 999px; overflow: hidden; margin: 5px 0 9px; }
+    .bar-fill { height: 100%; background: linear-gradient(90deg,#3b82f6,#22d3ee); border-radius: 999px; }
+
+    /* сетка приложений */
+    .apps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .apps .btn { margin: 0; }
+
+    .qr { display: flex; justify-content: center; margin: 8px 0 20px; }
+    .qr img { background: #fff; padding: 10px; border-radius: 14px; width: 200px; height: 200px; }
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 13px; margin-bottom: 10px; border-radius: 12px;
+      text-decoration: none; font-weight: 600; font-size: 15px;
+      background: #2563eb; color: #fff; border: none; cursor: pointer; transition: .15s;
+    }
+    .btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+    .btn.secondary { background: rgba(30,41,59,.8); color: #cbd5e1; }
+    .btn.secondary:hover { background: #273449; }
+    .url { display: flex; gap: 8px; margin-top: 6px; }
+    .url input {
+      flex: 1; padding: 11px 12px; border-radius: 10px; border: 1px solid #1e293b;
+      background: rgba(11,17,32,.8); color: #94a3b8; font-size: 12px;
+    }
+    .hint { color: #64748b; font-size: 12px; margin: 18px 0 0; text-align: center; }
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #16a34a; color: #fff; padding: 10px 18px; border-radius: 10px;
+      font-size: 14px; opacity: 0; transition: .2s; pointer-events: none; z-index: 5;
+    }
+    .toast.show { opacity: 1; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dots, .twinkle, .planet, .planet::after, .card { animation: none; }
+      .planet-rise { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- фон -->
+  <div class="space"></div>
+  <div class="twinkle">
+    <div class="layer l1"><div class="dots" id="d1"></div></div>
+    <div class="layer l2"><div class="dots" id="d2"></div></div>
+    <div class="layer l3"><div class="dots" id="d3"></div></div>
+  </div>
+  <!-- планета -->
+  <div class="planet-wrap"><div class="planet-rise" id="planet"><div class="planet"><img src="/static/planet.png" alt=""></div></div></div>
+
+  <div class="card">
+    <h1>{{ brand }}</h1>
+    <div class="sub">Подписка готова. Открой в приложении или отсканируй QR.</div>
+
+    {% if info %}
+    <div class="info">
+      <div class="info-top">
+        <span class="info-name">{{ title or brand }}</span>
+        {% if info.expired %}<span class="badge bad">истекла</span>
+        {% else %}<span class="badge ok">активна</span>{% endif %}
+      </div>
+      <div class="info-row"><span>Трафик</span><span>{{ info.used }} / {{ info.total }}</span></div>
+      {% if not info.unlimited %}
+      <div class="bar"><div class="bar-fill" style="width: {{ info.used_pct }}%"></div></div>
+      {% endif %}
+      <div class="info-row"><span>Действует до</span><span>{{ info.expire_str }}</span></div>
+      {% if info.days_left is not none and not info.expired %}
+      <div class="info-row"><span>Осталось дней</span><span>{{ info.days_left }}</span></div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="qr">
+      <img alt="QR"
+           src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={{ enc }}">
+    </div>
+
+    <div class="apps">
+      {% for name, link in apps %}
+        <a class="btn" href="{{ link }}">{{ name }}</a>
+      {% endfor %}
+    </div>
+
+    <button class="btn secondary" onclick="copyUrl()">Скопировать ссылку</button>
+
+    <div class="url">
+      <input id="suburl" value="{{ sub_url }}" readonly onclick="this.select()">
+    </div>
+
+    <p class="hint">Если кнопка не сработала — скопируй ссылку и добавь её вручную как подписку.</p>
+  </div>
+
+  <div class="toast" id="toast">Скопировано</div>
+
+  <script>
+    // генерация звёзд (box-shadow), две вертикальные копии для бесшовного дрейфа
+    function starField(count, color) {
+      const parts = [];
+      for (let i = 0; i < count; i++) {
+        const x = Math.floor(Math.random() * 2000);
+        const y = Math.floor(Math.random() * 2000);
+        parts.push(`${x}px ${y}px ${color}`);
+        parts.push(`${x}px ${y + 2000}px ${color}`); // копия для зацикливания
+      }
+      return parts.join(',');
+    }
+    document.getElementById('d1').style.boxShadow = starField(90, '#ffffff');
+    document.getElementById('d2').style.boxShadow = starField(55, '#dbeafe');
+    document.getElementById('d3').style.boxShadow = starField(28, '#bfdbfe');
+
+    // планета выезжает через 0.5с
+    setTimeout(() => document.getElementById('planet').classList.add('show'), 500);
+
+    // 3D-параллакс: мышь (десктоп) + наклон (телефон)
+    const root = document.documentElement;
+    let tx = 0, ty = 0, cx = 0, cy = 0;
+    function loop() {
+      cx += (tx - cx) * 0.08; cy += (ty - cy) * 0.08;
+      root.style.setProperty('--px', cx.toFixed(3));
+      root.style.setProperty('--py', cy.toFixed(3));
+      requestAnimationFrame(loop);
+    }
+    loop();
+    window.addEventListener('mousemove', (e) => {
+      tx = (e.clientX / window.innerWidth - 0.5) * 2;
+      ty = (e.clientY / window.innerHeight - 0.5) * 2;
+    });
+    window.addEventListener('deviceorientation', (e) => {
+      if (e.gamma == null) return;
+      tx = Math.max(-1, Math.min(1, e.gamma / 35));
+      ty = Math.max(-1, Math.min(1, (e.beta - 45) / 35));
+    });
+
+    function copyUrl() {
+      const v = document.getElementById('suburl').value;
+      navigator.clipboard.writeText(v).then(() => {
+        const t = document.getElementById('toast');
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 1500);
+      });
+    }
+  </script>
+</body>
+</html>

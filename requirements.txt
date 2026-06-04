@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+httpx
+python-dotenv
+sqlmodel
+jinja2
+psycopg[binary]
+cryptography
+requests

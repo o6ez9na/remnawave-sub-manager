@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-submgr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-submgr}
+      POSTGRES_DB: ${POSTGRES_DB:-submgr}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-submgr} -d ${POSTGRES_DB:-submgr}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_URL: postgresql+psycopg://${POSTGRES_USER:-submgr}:${POSTGRES_PASSWORD:-submgr}@db:5432/${POSTGRES_DB:-submgr}
+    # extra_servers.txt запечён в образ для разового seed; сервера дальше живут
+    # в Postgres и рулятся через админку — bind-mount не нужен (и опасен на
+    # сервере без файла: docker создаст директорию -> краш чтения).
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
