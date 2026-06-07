@@ -45,10 +45,12 @@
     .planet-wrap {
       position: fixed; left: 50%; bottom: 0; z-index: -1; pointer-events: none;
       transform: translate(calc(-50% + var(--px) * 14px), calc(var(--py) * 10px));
+      will-change: transform;
     }
     .planet-rise {
       transform: translateY(125%); opacity: 0;
       transition: transform 1.6s cubic-bezier(.16,.84,.3,1), opacity 1.2s ease;
+      will-change: transform;
     }
     .planet-rise.show { transform: translateY(42%); opacity: 1; }
     .planet {
@@ -56,7 +58,8 @@
       position: relative; overflow: hidden;          /* обрезаем лишнее по кругу */
       /* свечение атмосферы вокруг шара */
       box-shadow: 0 0 180px 40px rgba(59,130,246,.28), 0 0 70px 10px rgba(120,185,255,.25);
-      animation: bob 9s ease-in-out infinite;
+      animation: bob 14s ease-in-out infinite;
+      will-change: transform; backface-visibility: hidden;
     }
     .planet img {
       width: 100%; height: 100%; border-radius: 50%; display: block; object-fit: cover;
@@ -67,7 +70,7 @@
       content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
       box-shadow: inset -30px -22px 90px rgba(0,0,0,.35), inset 22px 16px 60px rgba(120,185,255,.12);
     }
-    @keyframes bob { 0%,100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+    @keyframes bob { 0%,100% { translate: 0 0; } 50% { translate: 0 -7px; } }
 
     /* ---------- карточка ---------- */
     .card {
@@ -207,20 +210,23 @@
     const root = document.documentElement;
     let tx = 0, ty = 0, cx = 0, cy = 0;
     function loop() {
-      cx += (tx - cx) * 0.08; cy += (ty - cy) * 0.08;
-      root.style.setProperty('--px', cx.toFixed(3));
-      root.style.setProperty('--py', cy.toFixed(3));
+      // плавное сглаживание (меньше коэффициент = мягче, без рывков)
+      cx += (tx - cx) * 0.045; cy += (ty - cy) * 0.045;
+      root.style.setProperty('--px', cx.toFixed(4));
+      root.style.setProperty('--py', cy.toFixed(4));
       requestAnimationFrame(loop);
     }
     loop();
+    const clamp = (v) => Math.max(-1, Math.min(1, v));
     window.addEventListener('mousemove', (e) => {
       tx = (e.clientX / window.innerWidth - 0.5) * 2;
       ty = (e.clientY / window.innerHeight - 0.5) * 2;
     });
     window.addEventListener('deviceorientation', (e) => {
       if (e.gamma == null) return;
-      tx = Math.max(-1, Math.min(1, e.gamma / 35));
-      ty = Math.max(-1, Math.min(1, (e.beta - 45) / 35));
+      // низкочастотный фильтр на шумный гироскоп + меньше чувствительность
+      tx = tx * 0.85 + clamp(e.gamma / 45) * 0.15;
+      ty = ty * 0.85 + clamp((e.beta - 45) / 45) * 0.15;
     });
 
     function copyUrl() {

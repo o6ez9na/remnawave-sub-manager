@@ -37,4 +37,8 @@ class Config:
     # Cookie панели в формате NAME=VALUE (опционально, для cookie-режима eGames)
     PANEL_COOKIE = os.getenv('PANEL_COOKIE')
 
+    # Токен для бота: регистрация подписки и получение sub-manager ссылки
+    # (эндпоинт POST /api/subscription, заголовок X-Manager-Token).
+    MANAGER_API_TOKEN = os.getenv('MANAGER_API_TOKEN')
+
 config = Config()

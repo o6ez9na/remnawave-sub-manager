@@ -36,18 +36,18 @@
 
     /* планета снизу */
     .planet-wrap { position: fixed; left: 50%; bottom: 0; z-index: -1; pointer-events: none;
-      transform: translate(calc(-50% + var(--px) * 14px), calc(var(--py) * 10px)); }
+      transform: translate(calc(-50% + var(--px) * 14px), calc(var(--py) * 10px)); will-change: transform; }
     .planet-rise { transform: translateY(135%); opacity: 0;
-      transition: transform 1.6s cubic-bezier(.16,.84,.3,1), opacity 1.2s ease; }
+      transition: transform 1.6s cubic-bezier(.16,.84,.3,1), opacity 1.2s ease; will-change: transform; }
     .planet-rise.show { transform: translateY(62%); opacity: 1; }
     .planet { width: min(820px, 120vw); height: min(820px, 120vw); border-radius: 50%;
       position: relative; overflow: hidden;
       box-shadow: 0 0 180px 40px rgba(59,130,246,.24), 0 0 70px 10px rgba(120,185,255,.2);
-      animation: bob 9s ease-in-out infinite; }
+      animation: bob 14s ease-in-out infinite; will-change: transform; backface-visibility: hidden; }
     .planet img { width: 100%; height: 100%; border-radius: 50%; display: block; object-fit: cover; transform: scale(1.13); }
     .planet::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
       box-shadow: inset -30px -22px 90px rgba(0,0,0,.35), inset 22px 16px 60px rgba(120,185,255,.12); }
-    @keyframes bob { 0%,100% { translate: 0 0; } 50% { translate: 0 -10px; } }
+    @keyframes bob { 0%,100% { translate: 0 0; } 50% { translate: 0 -7px; } }
 
     /* ---------- панель ---------- */
     .wrap {
@@ -71,6 +71,7 @@
     }
     input::placeholder { color: #64748b; }
     button { cursor: pointer; font-weight: 600; }
+    button:disabled { opacity: .35; cursor: default; }
     .primary { background: #2563eb; border-color: #2563eb; color: #fff; }
     .primary:hover { background: #1d4ed8; }
     .danger { background: transparent; border-color: #7f1d1d; color: #f87171; padding: 7px 11px; }
@@ -88,6 +89,11 @@
     .glob { background: #1e3a8a; color: #bfdbfe; }
     .pers { background: #422006; color: #fdba74; }
     td.actions { white-space: nowrap; text-align: right; }
+    #rows tr { cursor: grab; }
+    #rows tr.dragging { opacity: .45; background: rgba(37,99,235,.12); }
+    .dragcell { display: flex; align-items: center; gap: 8px; }
+    .grip { color: #475569; cursor: grab; user-select: none; }
+    #rows tr:hover .grip { color: #94a3b8; }
     .empty { color: #64748b; padding: 24px; text-align: center; }
     .copy { cursor: pointer; color: #60a5fa; }
 
@@ -100,6 +106,8 @@
       border: 1px solid rgba(148,163,184,.16); border-radius: 16px; padding: 22px; }
     .box h3 { margin: 0 0 4px; }
     .box .muted { color: #94a3b8; font-size: 13px; margin: 0 0 16px; word-break: break-all; }
+    .grp { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #64748b; font-weight: 700; margin: 14px 0 4px; }
+    .grp:first-child { margin-top: 0; }
     .srvrow { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid rgba(148,163,184,.1); }
     .srvrow .nm { flex: 1; font-size: 13px; }
     .modactions { display: flex; gap: 10px; margin-top: 16px; }
@@ -129,11 +137,17 @@
     <h1>{{ brand }} — управление</h1>
     <div class="tabs">
       <button class="tab active" id="tab-servers" onclick="switchTab('servers')">Сервера</button>
+      <button class="tab" id="tab-sources" onclick="switchTab('sources')">Источники</button>
       <button class="tab" id="tab-users" onclick="switchTab('users')">Пользователи</button>
     </div>
 
     <!-- СЕРВЕРА -->
     <div id="view-servers">
+      <div class="add" style="grid-template-columns: 1fr auto auto;">
+        <input id="importUrl" placeholder="ссылка на подписку — вытащит все конфиги">
+        <label class="chk"><input type="checkbox" id="importGlobal" checked> глобальные</label>
+        <button class="primary" onclick="importSub(this)">Импорт из ссылки</button>
+      </div>
       <div class="add">
         <input id="link" placeholder="vless://... (одна ссылка)">
         <input id="name" placeholder="название (необязательно)">
@@ -142,11 +156,25 @@
       </div>
       <table>
         <thead>
-          <tr><th>ID</th><th>Название</th><th>Ссылка</th><th>Тип</th><th>Статус</th><th></th></tr>
+          <tr><th>#</th><th>Название</th><th>Ссылка</th><th>Тип</th><th>Статус</th><th></th></tr>
         </thead>
         <tbody id="rows"></tbody>
       </table>
       <div id="empty" class="empty hidden">Серверов пока нет.</div>
+    </div>
+
+    <!-- ИСТОЧНИКИ -->
+    <div id="view-sources" class="hidden">
+      <p class="empty" style="text-align:left;padding:0 0 14px;color:#94a3b8;">
+        Ссылки-подписки, добавленные через «Импорт из ссылки». Авто-обновление раз в час.
+      </p>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Ссылка</th><th>Тип</th><th>Конфигов</th><th>Обновлено</th><th></th></tr>
+        </thead>
+        <tbody id="srows"></tbody>
+      </table>
+      <div id="sempty" class="empty hidden">Источников нет. Добавь через «Импорт из ссылки» во вкладке Сервера.</div>
     </div>
 
     <!-- ПОЛЬЗОВАТЕЛИ -->
@@ -192,11 +220,56 @@
     function copy(text) { navigator.clipboard.writeText(text).then(() => toast()); }
 
     function switchTab(t) {
-      document.getElementById("tab-servers").classList.toggle("active", t === "servers");
-      document.getElementById("tab-users").classList.toggle("active", t === "users");
-      document.getElementById("view-servers").classList.toggle("hidden", t !== "servers");
-      document.getElementById("view-users").classList.toggle("hidden", t !== "users");
+      for (const name of ["servers", "sources", "users"]) {
+        document.getElementById("tab-" + name).classList.toggle("active", t === name);
+        document.getElementById("view-" + name).classList.toggle("hidden", t !== name);
+      }
       if (t === "users") loadUsers();
+      if (t === "sources") loadSources();
+    }
+
+    // ---- Источники ----
+    function fmtDate(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso + "Z");
+      return d.toLocaleString();
+    }
+    async function loadSources() {
+      const rows = document.getElementById("srows");
+      rows.innerHTML = `<tr><td colspan="6" class="empty">Загрузка…</td></tr>`;
+      const list = await api("GET", "/admin/sources");
+      rows.innerHTML = "";
+      document.getElementById("sempty").classList.toggle("hidden", list.length > 0);
+      for (const s of list) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${s.id}</td>
+          <td class="link">${esc(s.url)}</td>
+          <td><span class="pill ${s.is_global ? "glob" : "pers"}">${s.is_global ? "глоб" : "перс"}</span></td>
+          <td>${s.last_count}</td>
+          <td>${fmtDate(s.last_synced)}</td>
+          <td class="actions">
+            <button class="ghost" data-act="sync">Обновить</button>
+            <button class="danger" data-act="del">✕</button>
+          </td>`;
+        tr.querySelector('[data-act="sync"]').addEventListener("click", (e) => syncSource(s.id, e.target));
+        tr.querySelector('[data-act="del"]').addEventListener("click", () => delSource(s.id));
+        rows.appendChild(tr);
+      }
+    }
+    async function syncSource(id, btn) {
+      btn.disabled = true; btn.textContent = "…";
+      try {
+        const r = await api("POST", `/admin/sources/${id}/sync`);
+        toast(`+${r.added} ~${r.updated} -${r.removed}`);
+        loadSources();
+      } finally { btn.disabled = false; btn.textContent = "Обновить"; }
+    }
+    async function delSource(id) {
+      if (!confirm("Удалить источник #" + id + " и все его конфиги?")) return;
+      await api("DELETE", `/admin/sources/${id}`);
+      toast("Удалено");
+      loadSources();
     }
 
     // ---- Сервера ----
@@ -205,22 +278,51 @@
       const rows = document.getElementById("rows");
       rows.innerHTML = "";
       document.getElementById("empty").classList.toggle("hidden", SERVERS.length > 0);
-      for (const s of SERVERS) {
+      SERVERS.forEach((s, i) => {
         const tr = document.createElement("tr");
+        tr.draggable = true;
+        tr.dataset.id = s.id;
         tr.innerHTML = `
-          <td>${s.id}</td>
+          <td class="dragcell"><span class="grip">⠿</span><span class="num">${i + 1}</span></td>
           <td>${esc(s.name) || "—"}</td>
           <td class="link">${esc(s.link)}</td>
           <td><span class="pill ${s.is_global ? "glob" : "pers"}">${s.is_global ? "глобальный" : "персональный"}</span></td>
           <td><span class="pill ${s.enabled ? "on" : "off"}">${s.enabled ? "вкл" : "выкл"}</span></td>
           <td class="actions">
+            <button class="ghost" onclick="move(${s.id},'up')" ${i === 0 ? "disabled" : ""}>↑</button>
+            <button class="ghost" onclick="move(${s.id},'down')" ${i === SERVERS.length - 1 ? "disabled" : ""}>↓</button>
             <button class="ghost" onclick="toggleGlobal(${s.id}, ${!s.is_global})">${s.is_global ? "→перс" : "→глоб"}</button>
             <button class="ghost" onclick="toggle(${s.id}, ${!s.enabled})">${s.enabled ? "выкл" : "вкл"}</button>
             <button class="ghost" onclick="rename(${s.id})">✎</button>
             <button class="danger" onclick="del(${s.id})">✕</button>
           </td>`;
+        tr.addEventListener("dragstart", onDragStart);
+        tr.addEventListener("dragover", onDragOver);
+        tr.addEventListener("dragend", onDragEnd);
+        tr.addEventListener("drop", (e) => e.preventDefault());
         rows.appendChild(tr);
-      }
+      });
+    }
+    async function move(id, dir) { await api("POST", `/admin/servers/${id}/move?dir=${dir}`); loadServers(); }
+
+    // drag-and-drop порядка
+    let dragEl = null;
+    function onDragStart(e) { dragEl = e.currentTarget; dragEl.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; }
+    function onDragOver(e) {
+      e.preventDefault();
+      const tr = e.currentTarget;
+      if (!dragEl || tr === dragEl) return;
+      const rect = tr.getBoundingClientRect();
+      const after = (e.clientY - rect.top) / rect.height > 0.5;
+      tr.parentNode.insertBefore(dragEl, after ? tr.nextSibling : tr);
+    }
+    async function onDragEnd() {
+      if (!dragEl) return;
+      dragEl.classList.remove("dragging");
+      dragEl = null;
+      const ids = [...document.querySelectorAll("#rows tr")].map(tr => parseInt(tr.dataset.id));
+      await api("PUT", "/admin/servers/order", { ids });
+      loadServers();
     }
     async function addServer() {
       const link = document.getElementById("link").value.trim();
@@ -231,6 +333,18 @@
       document.getElementById("link").value = "";
       document.getElementById("name").value = "";
       loadServers();
+    }
+    async function importSub(btn) {
+      const url = document.getElementById("importUrl").value.trim();
+      if (!url) return;
+      const is_global = document.getElementById("importGlobal").checked;
+      btn.disabled = true; btn.textContent = "Импорт…";
+      try {
+        const res = await api("POST", "/admin/import", { url, is_global });
+        toast(`Найдено ${res.found}: +${res.added} новых, ~${res.updated} обновл., -${res.removed} удал.`);
+        document.getElementById("importUrl").value = "";
+        loadServers();
+      } finally { btn.disabled = false; btn.textContent = "Импорт из ссылки"; }
     }
     async function toggle(id, enabled) { await api("PATCH", `/admin/servers/${id}`, { enabled }); loadServers(); }
     async function toggleGlobal(id, is_global) { await api("PATCH", `/admin/servers/${id}`, { is_global }); loadServers(); }
@@ -258,43 +372,62 @@
           <td>${esc(title)}</td>
           <td>${esc(u.status) || "—"}</td>
           <td class="link"><span class="copy">${u.sub_url}</span></td>
-          <td>${u.assigned.length}</td>
-          <td class="actions"><button class="ghost">Сервера</button></td>`;
+          <td>${u.grant_count}</td>
+          <td class="actions"><button class="ghost">Выдать</button></td>`;
         tr.querySelector(".copy").addEventListener("click", () => copy(u.sub_url));
         tr.querySelector("button").addEventListener("click", () => openModal(u.short_uuid, title));
         urows.appendChild(tr);
       }
     }
 
-    // ---- Модалка назначения ----
+    // ---- Модалка выдачи (подписки + ручные сервера) ----
     async function openModal(token, title) {
       MODAL_TOKEN = token;
-      if (!SERVERS.length) SERVERS = await api("GET", "/admin/servers");
-      const personal = SERVERS.filter(s => !s.is_global);
-      const data = await api("GET", `/admin/users/${token}/servers`);
-      const assigned = new Set(data.assigned);
-      document.getElementById("mTitle").textContent = "Персональные сервера";
+      const [servers, sources, grants] = await Promise.all([
+        api("GET", "/admin/servers"),
+        api("GET", "/admin/sources"),
+        api("GET", `/admin/users/${token}/grants`),
+      ]);
+      SERVERS = servers;
+      const gSources = new Set(grants.sources);
+      const gServers = new Set(grants.servers);
+      // ручные персональные сервера: не глобальные и не из источника
+      const manual = servers.filter(s => !s.is_global && !s.source_id);
+
+      document.getElementById("mTitle").textContent = "Выдать пользователю";
       document.getElementById("mSub").textContent = title + " · " + token;
       const list = document.getElementById("mList");
-      if (!personal.length) { list.innerHTML = `<p class="muted">Нет персональных серверов. Создай сервер с выключенным «глобальный».</p>`; }
-      else {
-        list.innerHTML = "";
-        for (const s of personal) {
-          const row = document.createElement("label");
-          row.className = "srvrow";
-          const off = s.enabled ? "" : " <span class='pill off'>выкл</span>";
-          const label = esc(s.name) || esc(s.link).slice(0, 50);
-          row.innerHTML = `<input type="checkbox" value="${s.id}" ${assigned.has(s.id) ? "checked" : ""}>
-            <span class="nm">${label}${off}</span>`;
-          list.appendChild(row);
+      let html = "";
+
+      html += `<div class="grp">Подписки (источники)</div>`;
+      if (!sources.length) {
+        html += `<p class="muted">Источников нет. Добавь через «Импорт из ссылки».</p>`;
+      } else {
+        for (const s of sources) {
+          html += `<label class="srvrow"><input type="checkbox" data-kind="source" value="${s.id}" ${gSources.has(s.id) ? "checked" : ""}>
+            <span class="nm">${esc(s.url)} <span class="pill glob">${s.last_count} конф.</span></span></label>`;
         }
       }
+
+      html += `<div class="grp">Отдельные сервера</div>`;
+      if (!manual.length) {
+        html += `<p class="muted">Нет ручных персональных серверов (с выключенным «глобальный»).</p>`;
+      } else {
+        for (const s of manual) {
+          const off = s.enabled ? "" : " <span class='pill off'>выкл</span>";
+          const label = esc(s.name) || esc(s.link).slice(0, 50);
+          html += `<label class="srvrow"><input type="checkbox" data-kind="server" value="${s.id}" ${gServers.has(s.id) ? "checked" : ""}>
+            <span class="nm">${label}${off}</span></label>`;
+        }
+      }
+      list.innerHTML = html;
       document.getElementById("modal").classList.add("show");
     }
     function closeModal() { document.getElementById("modal").classList.remove("show"); MODAL_TOKEN = null; }
     async function saveAssign() {
-      const ids = [...document.querySelectorAll("#mList input:checked")].map(c => parseInt(c.value));
-      await api("PUT", `/admin/users/${MODAL_TOKEN}/servers`, { server_ids: ids });
+      const source_ids = [...document.querySelectorAll('#mList input[data-kind="source"]:checked')].map(c => parseInt(c.value));
+      const server_ids = [...document.querySelectorAll('#mList input[data-kind="server"]:checked')].map(c => parseInt(c.value));
+      await api("PUT", `/admin/users/${MODAL_TOKEN}/grants`, { source_ids, server_ids });
       closeModal();
       toast("Сохранено");
       loadUsers();
@@ -316,19 +449,20 @@
     const root = document.documentElement;
     let tx = 0, ty = 0, cx = 0, cy = 0;
     (function loop() {
-      cx += (tx - cx) * 0.08; cy += (ty - cy) * 0.08;
-      root.style.setProperty('--px', cx.toFixed(3));
-      root.style.setProperty('--py', cy.toFixed(3));
+      cx += (tx - cx) * 0.045; cy += (ty - cy) * 0.045;
+      root.style.setProperty('--px', cx.toFixed(4));
+      root.style.setProperty('--py', cy.toFixed(4));
       requestAnimationFrame(loop);
     })();
+    const clamp = (v) => Math.max(-1, Math.min(1, v));
     window.addEventListener('mousemove', (e) => {
       tx = (e.clientX / window.innerWidth - 0.5) * 2;
       ty = (e.clientY / window.innerHeight - 0.5) * 2;
     });
     window.addEventListener('deviceorientation', (e) => {
       if (e.gamma == null) return;
-      tx = Math.max(-1, Math.min(1, e.gamma / 35));
-      ty = Math.max(-1, Math.min(1, (e.beta - 45) / 35));
+      tx = tx * 0.85 + clamp(e.gamma / 45) * 0.15;
+      ty = ty * 0.85 + clamp((e.beta - 45) / 45) * 0.15;
     });
 
     loadServers();

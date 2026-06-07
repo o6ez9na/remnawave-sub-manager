@@ -7,8 +7,10 @@
 Запуск: uvicorn manager:app --host 0.0.0.0 --port 8080
 """
 
+import asyncio
 import base64
-from urllib.parse import quote
+import logging
+from urllib.parse import quote, unquote, urlsplit
 
 import httpx
 from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
@@ -53,9 +55,30 @@ CLIENT_UA_KEYWORDS = (
 )
 
 
+logger = logging.getLogger("sub-manager")
+SYNC_INTERVAL_SEC = 3600  # раз в час
+
+
 @app.on_event("startup")
 def _startup() -> None:
     db.init_db(seed_file=config.EXTRA_FILE)
+
+
+@app.on_event("startup")
+async def _start_sync_loop() -> None:
+    asyncio.create_task(_sync_loop())
+
+
+async def _sync_loop() -> None:
+    """Раз в час перепарсивает все источники и обновляет конфиги."""
+    while True:
+        await asyncio.sleep(SYNC_INTERVAL_SEC)
+        for src in db.list_sources():
+            try:
+                res = await sync_source(src)
+                logger.info("sync source %s: %s", src.id, res)
+            except Exception as exc:  # не валим цикл из-за одного источника
+                logger.warning("sync source %s failed: %s", src.id, exc)
 
 
 def wants_html(request: Request) -> bool:
@@ -210,6 +233,45 @@ async def favicon():
 
 
 # ---------------------------------------------------------------------------
+# API для бота: зарегистрировать подписку юзера и вернуть sub-manager ссылку.
+# Бот после создания юзера в Remnawave дёргает это с shortUuid.
+# ---------------------------------------------------------------------------
+
+def require_manager_token(x_manager_token: str | None = Header(default=None)) -> None:
+    if not config.MANAGER_API_TOKEN:
+        raise HTTPException(status_code=503, detail="MANAGER_API_TOKEN not configured")
+    if x_manager_token != config.MANAGER_API_TOKEN:
+        raise HTTPException(status_code=401, detail="invalid manager token")
+
+
+class SubIn(BaseModel):
+    short_uuid: str | None = None
+    subscription_url: str | None = None
+    title: str | None = None
+    source_ids: list[int] | None = None  # опц. сразу выдать источники юзеру
+
+
+def _token_from(body: SubIn) -> str | None:
+    if body.short_uuid:
+        return body.short_uuid.strip()
+    if body.subscription_url:
+        return body.subscription_url.rstrip("/").rsplit("/", 1)[-1]
+    return None
+
+
+@app.post("/api/subscription", dependencies=[Depends(require_manager_token)])
+async def api_subscription(body: SubIn):
+    """Зарегистрировать подписку и вернуть sub-manager ссылку."""
+    token = _token_from(body)
+    if not token:
+        raise HTTPException(status_code=422, detail="short_uuid or subscription_url required")
+    db.touch_subscription(token, title=body.title)
+    if body.source_ids is not None:
+        db.set_user_sources(token, body.source_ids)
+    return {"subscription_url": f"{config.PUBLIC_URL}/{token}", "token": token}
+
+
+# ---------------------------------------------------------------------------
 # Админка серверов
 # ---------------------------------------------------------------------------
 
@@ -239,6 +301,86 @@ class AssignIn(BaseModel):
     server_ids: list[int]
 
 
+class GrantsIn(BaseModel):
+    source_ids: list[int] = []
+    server_ids: list[int] = []
+
+
+class ImportIn(BaseModel):
+    url: str
+    is_global: bool = True
+
+
+PROXY_SCHEMES = (
+    "vless://", "vmess://", "trojan://", "ss://", "ssr://",
+    "hysteria://", "hysteria2://", "hy2://", "tuic://",
+)
+
+
+def extract_proxy_links(text: str) -> list[str]:
+    """Вытащить прокси-ссылки из подписки (base64 или plain список)."""
+    cand = text.strip()
+    try:
+        dec = base64.b64decode(cand + "=" * (-len(cand) % 4)).decode("utf-8")
+        if "://" in dec:
+            text = dec
+    except Exception:
+        pass
+    out = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith(PROXY_SCHEMES):
+            out.append(line)
+    return out
+
+
+def link_tag(link: str) -> str | None:
+    """Имя из #-фрагмента ссылки (url-декод)."""
+    if "#" in link:
+        name = unquote(link.split("#", 1)[1]).strip()
+        return name or None
+    return None
+
+
+def link_key(link: str) -> str:
+    """Идентичность конфига: scheme + uuid/user + host:port (без тега/параметров).
+
+    Чтобы при ресинке тот же сервер матчился, даже если поменялись sni/pbk/имя.
+    """
+    base = link.split("#", 1)[0]
+    try:
+        p = urlsplit(base)
+        return f"{p.scheme}://{p.username or ''}@{(p.hostname or '').lower()}:{p.port or ''}"
+    except Exception:
+        return base
+
+
+def build_import_items(text: str) -> list[dict]:
+    """Из тела подписки -> список {link, ckey, name}, дедуп по ckey."""
+    items: dict[str, dict] = {}
+    for ln in extract_proxy_links(text):
+        items[link_key(ln)] = {"link": ln, "ckey": link_key(ln), "name": link_tag(ln)}
+    return list(items.values())
+
+
+async def fetch_sub_text(url: str) -> str:
+    """Скачать тело подписки (UA клиента, чтобы отдали список конфигов)."""
+    async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
+        r = await client.get(url, headers={"User-Agent": "v2rayNG/1.8.5"})
+    if r.status_code >= 400:
+        raise httpx.HTTPStatusError(
+            f"upstream {r.status_code}", request=r.request, response=r
+        )
+    return r.text
+
+
+async def sync_source(source) -> dict:
+    """Скачать источник и синхронизировать его сервера в БД."""
+    text = await fetch_sub_text(source.url)
+    items = build_import_items(text)
+    return db.reconcile_source(source.id, items)
+
+
 def _server_dict(s: db.ExtraServer) -> dict:
     return {
         "id": s.id,
@@ -246,6 +388,7 @@ def _server_dict(s: db.ExtraServer) -> dict:
         "name": s.name,
         "enabled": s.enabled,
         "is_global": s.is_global,
+        "source_id": s.source_id,
     }
 
 
@@ -253,11 +396,14 @@ def _server_dict(s: db.ExtraServer) -> dict:
 async def admin_page(request: Request, key: str | None = None):
     if not config.ADMIN_TOKEN or key != config.ADMIN_TOKEN:
         return Response("forbidden", status_code=403)
-    return templates.TemplateResponse(
+    resp = templates.TemplateResponse(
         request=request,
         name="admin.html",
         context={"brand": config.BRAND, "key": config.ADMIN_TOKEN},
     )
+    # не кэшировать админку — иначе после апдейта браузер крутит старый JS
+    resp.headers["Cache-Control"] = "no-store, must-revalidate"
+    return resp
 
 
 @app.get("/admin/servers", dependencies=[Depends(require_admin)])
@@ -302,11 +448,87 @@ async def admin_update(server_id: int, body: ServerPatch):
     return _server_dict(s)
 
 
+@app.post("/admin/servers/{server_id}/move", dependencies=[Depends(require_admin)])
+async def admin_move(server_id: int, dir: str):
+    """Переместить сервер в порядке: dir=up|down."""
+    if dir not in ("up", "down"):
+        raise HTTPException(status_code=422, detail="dir must be up or down")
+    db.move_server(server_id, dir)
+    return {"ok": True}
+
+
+class OrderIn(BaseModel):
+    ids: list[int]
+
+
+@app.put("/admin/servers/order", dependencies=[Depends(require_admin)])
+async def admin_reorder(body: OrderIn):
+    """Задать порядок серверов по списку id (drag-and-drop)."""
+    db.reorder_servers(body.ids)
+    return {"ok": True}
+
+
 @app.delete("/admin/servers/{server_id}", dependencies=[Depends(require_admin)])
 async def admin_delete(server_id: int):
     if not db.delete_server(server_id):
         raise HTTPException(status_code=404, detail="server not found")
     return {"deleted": server_id}
+
+
+@app.post("/admin/import", dependencies=[Depends(require_admin)])
+async def admin_import(body: ImportIn):
+    """Добавить ссылку-источник и сразу синхронизировать конфиги.
+
+    Источник сохраняется и далее авто-обновляется раз в час.
+    """
+    url = body.url.strip()
+    if not url:
+        raise HTTPException(status_code=422, detail="empty url")
+    try:
+        text = await fetch_sub_text(url)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"fetch failed: {exc}")
+
+    items = build_import_items(text)
+    if not items:
+        raise HTTPException(status_code=422, detail="конфиги не найдены (JSON-сабка не поддержана)")
+
+    src = db.find_source_by_url(url) or db.add_source(url, body.is_global)
+    res = db.reconcile_source(src.id, items)
+    return {"found": len(items), **res, "source_id": src.id}
+
+
+@app.get("/admin/sources", dependencies=[Depends(require_admin)])
+async def admin_sources():
+    return [
+        {
+            "id": s.id,
+            "url": s.url,
+            "is_global": s.is_global,
+            "last_count": s.last_count,
+            "last_synced": s.last_synced.isoformat() if s.last_synced else None,
+        }
+        for s in db.list_sources()
+    ]
+
+
+@app.post("/admin/sources/{source_id}/sync", dependencies=[Depends(require_admin)])
+async def admin_source_sync(source_id: int):
+    src = db.get_source(source_id)
+    if src is None:
+        raise HTTPException(status_code=404, detail="source not found")
+    try:
+        res = await sync_source(src)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"fetch failed: {exc}")
+    return res
+
+
+@app.delete("/admin/sources/{source_id}", dependencies=[Depends(require_admin)])
+async def admin_source_delete(source_id: int):
+    if not db.delete_source(source_id):
+        raise HTTPException(status_code=404, detail="source not found")
+    return {"deleted": source_id}
 
 
 # ---- Пользователи панели + персональные назначения --------------------------
@@ -319,22 +541,28 @@ async def admin_users():
     except panel.PanelError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     for u in users:
-        u["sub_url"] = f"{config.PUBLIC_URL}/{u['short_uuid']}"
-        u["assigned"] = db.list_assignments(u["short_uuid"])
+        tok = u["short_uuid"]
+        u["sub_url"] = f"{config.PUBLIC_URL}/{tok}"
+        u["grant_count"] = len(db.list_user_sources(tok)) + len(db.list_assignments(tok))
     return users
 
 
-@app.get("/admin/users/{token}/servers", dependencies=[Depends(require_admin)])
-async def admin_user_servers(token: str):
-    """ID персональных серверов, назначенных юзеру."""
-    return {"token": token, "assigned": db.list_assignments(token)}
+@app.get("/admin/users/{token}/grants", dependencies=[Depends(require_admin)])
+async def admin_user_grants(token: str):
+    """Что назначено юзеру: источники-подписки + отдельные ручные сервера."""
+    return {
+        "token": token,
+        "sources": db.list_user_sources(token),
+        "servers": db.list_assignments(token),
+    }
 
 
-@app.put("/admin/users/{token}/servers", dependencies=[Depends(require_admin)])
-async def admin_user_assign(token: str, body: AssignIn):
-    """Заменить набор персональных серверов юзера."""
-    assigned = db.set_assignments(token, body.server_ids)
-    return {"token": token, "assigned": assigned}
+@app.put("/admin/users/{token}/grants", dependencies=[Depends(require_admin)])
+async def admin_user_set_grants(token: str, body: GrantsIn):
+    """Заменить набор источников и отдельных серверов юзера."""
+    sources = db.set_user_sources(token, body.source_ids)
+    servers = db.set_assignments(token, body.server_ids)
+    return {"token": token, "sources": sources, "servers": servers}
 
 
 def _raw_subscription(up: httpx.Response, token: str) -> Response:
